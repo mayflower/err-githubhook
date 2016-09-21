@@ -1,13 +1,11 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
-import hashlib
-import hmac
 import json
 import logging
 
 from errbot import BotPlugin, botcmd, webhook
 from errbot.templating import tenv
-from config import BOT_PREFIX, CHATROOM_FN
+import errbot.backends.base
 from bottle import abort, response
 
 log = logging.getLogger(name='errbot.plugins.GithubHook')
@@ -23,10 +21,10 @@ DEFAULT_EVENTS = ['commit_comment', 'issue_comment', 'issues',
 
 DEFAULT_CONFIG = { 'default_events': DEFAULT_EVENTS, 'repositories': {}, }
 
-REQUIRED_HEADERS = ['X-Hub-Signature', 'X-Github-Event']
+REQUIRED_HEADERS = ['X-Github-Event']
 
-HELP_MSG = ('Please see the output of `{0}github help` for usage '
-            'and configuration instructions.'.format(BOT_PREFIX))
+HELP_MSG = ('Please see the output of `!github help` for usage '
+            'and configuration instructions.')
 
 REPO_UNKNOWN = 'The repository {0} is unknown to me.'
 EVENT_UNKNOWN = 'Unknown event {0}, skipping.'
@@ -116,14 +114,6 @@ class GithubHook(BotPlugin):
                                           .get('routes', {}) \
                                           .keys()
 
-    def get_token(self, repo):
-        """Returns the token for a repository.
-
-        Be **very** careful as to where you call this as this returns the
-        plain text, uncensored token.
-        """
-        return self.config['repositories'].get(repo, {}).get('token')
-
     def set_defaults(self, defaults):
         """Set which events are relayed by default."""
         self.config['default_events'] = defaults
@@ -141,13 +131,8 @@ class GithubHook(BotPlugin):
         If the repository is unknown to us, add the repository first.
         """
         if self.get_repo(repo) is None:
-            self.config['repositories'][repo] = { 'routes': {}, 'token': None }
+            self.config['repositories'][repo] = { 'routes': {} }
         self.config['repositories'][repo]['routes'][room] = {}
-        self.save_config()
-
-    def set_token(self, repo, token):
-        """Set the token for a repository."""
-        self.config['repositories'][repo]['token'] = token
         self.save_config()
 
     def save_config(self):
@@ -197,8 +182,6 @@ class GithubHook(BotPlugin):
                        'should forward by default')
         message.append(' • defaults: to show the events to be forwarded '
                        'by default')
-        message.append(' • token <repo>: to configure the repository '
-                       'secret')
         message.append('Please see {0} for more information.'.format(README))
         return '\n'.join(message)
 
@@ -262,10 +245,6 @@ class GithubHook(BotPlugin):
             self.set_events(repo, room, events)
             yield ('Done. Relaying messages from {0} to {1} for '
                    'events: {2}'.format(repo, room, ' '.join(events)))
-            if self.get_token(repo) is None:
-                yield ("Don't forget to set the token for {0}. Instructions "
-                       "on how to do so and why can be found "
-                       "at: {1}.".format(repo, README))
         else:
             yield HELP_MSG
 
@@ -288,24 +267,6 @@ class GithubHook(BotPlugin):
             else:
                 yield 'No repositories configured, nothing to show.'
 
-    @botcmd(split_args_with=None)
-    def github_token(self, message, args):
-        """Register the secret token for a repository.
-
-        This token is needed to validate the incoming request as coming from
-        Github. It must be configured on your repository's webhook settings
-        too.
-        """
-        if len(args) != 2:
-            return HELP_MSG
-        else:
-            repo = args[0]
-            token = args[1]
-            if self.has_repo(repo):
-                self.set_token(repo, token)
-                return 'Token set for {0}.'.format(repo)
-            else:
-                return REPO_UNKNOWN.format(repo)
 
     @botcmd(split_args_with=None)
     def github_remove(self, message, args):
@@ -352,7 +313,6 @@ class GithubHook(BotPlugin):
             abort(400)
 
         event_type = request.get_header('X-Github-Event').lower()
-        signature = request.get_header('X-Hub-Signature')
         body = request.json
 
         if event_type == 'ping':
@@ -370,24 +330,6 @@ class GithubHook(BotPlugin):
             response.status = 204
             return None
 
-        token = self.get_token(repo)
-        if token is None:
-            # No token, no validation. Accept the payload since it's not their
-            # fault that the user hasn't configured a token yet but log a
-            # message about it and discard it.
-            log.info('Message received for {0} but no token '
-                     'configured'.format(repo))
-            response.status = 204
-            return None
-
-        if not self.valid_message(request.body, token, signature):
-            ip = request.get_header('X-Real-IP')
-            if ip is None:
-                log.warn('Event received for {0} but could not validate it.'.format(repo))
-            else:
-                log.warn('Event received for {0} from {1} but could not validate it.'.format(repo, ip))
-            abort(403)
-
         # Dispatch the message. Check explicitly with hasattr first. When
         # using a try/catch with AttributeError errors in the
         # message_function which result in an AttributeError would cause
@@ -404,10 +346,14 @@ class GithubHook(BotPlugin):
         # - join the room (this won't do anything if we're already joined)
         # - send the message
         if message and message is not None:
-            for room in self.get_routes(repo):
-                events = self.get_events(repo, room)
+            for room_name in self.get_routes(repo):
+                events = self.get_events(repo, room_name)
                 if event_type in events or '*' in events:
-                    self.join_room(room, username=CHATROOM_FN)
+                    room = self.query_room(room_name)
+                    try:
+                        room.join(username=self._bot.bot_config.CHATROOM_FN)
+                    except errbot.backends.base.RoomError as e:
+                        self.log.info(e)
                     self.send(room, message, message_type='groupchat')
         response.status = 204
         return None
@@ -436,26 +382,6 @@ class GithubHook(BotPlugin):
             return False
 
         return True
-
-    @staticmethod
-    def valid_message(message, token, signature):
-        """Validate the signature of the incoming payload.
-
-        The header received from Github is in the form of algorithm=hash.
-        """
-        if signature is None:
-            return False
-
-        try:
-            alg, sig = signature.split('=')
-        except ValueError:
-            return False
-
-        if alg != 'sha1':
-            return False
-
-        mac = hmac.new(token.encode(), msg=message.read(), digestmod=hashlib.sha1).hexdigest()
-        return hmac.compare_digest(mac, sig)
 
     @staticmethod
     def msg_generic(body, repo, event_type):
