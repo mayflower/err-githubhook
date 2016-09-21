@@ -4,3 +4,6 @@
   {%- set commit = 'commits' -%}
 {%- endif -%}
 [Github] [{{repo}}] {{commits}} {{commit}} pushed to {{url}} - {{branch}} by {{user}}.
+{%- for msg in messages %}
+  {{msg}}
+{% endfor %}

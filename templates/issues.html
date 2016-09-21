@@ -1,5 +1,8 @@
 {%- if action in ['opened', 'closed', 'reopened'] -%}
     [Github] [{{repo}}] issue {{url}} ({{title}}) {{action}} by {{user}}
+    {%- if action == 'opened' %}
+      {{body}}
+    {%- endif -%}
 {%- elif action in ['labeled', 'unlabeled'] %}
     {%- if action == 'labeled' -%}
         {%- set act_value = 'added to' -%}

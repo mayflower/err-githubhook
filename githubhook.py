@@ -178,6 +178,7 @@ class GithubHook(BotPlugin):
                        'messages from <repo> to <room> for <events>')
         message.append(' • routes <repo>: show routes for this repository')
         message.append(' • routes: to display all routes')
+        message.append(' • global route <room>: to set a route for global events')
         message.append(' • defaults <events>: to configure the events we '
                        'should forward by default')
         message.append(' • defaults: to show the events to be forwarded '
@@ -296,6 +297,19 @@ class GithubHook(BotPlugin):
         else:
             yield HELP_MSG
 
+    @botcmd(split_args_with=None)
+    def github_global(self, message, args):
+        """Set a global route"""
+        if len(args) == 1:
+            self.global_route = None
+            yield 'Removed global route.'
+        elif len(args) == 2:
+            room = args[1]
+            self.global_route = room
+            yield 'Set global route to {}.'.format(room)
+        else:
+            yield HELP_MSG
+
     @webhook(r'/github', methods=('POST',), raw=True)
     def receive(self, request):
         """Handle the incoming payload.
@@ -320,9 +334,13 @@ class GithubHook(BotPlugin):
             response.status = 204
             return None
 
-        repo = body['repository']['full_name']
+        repo = body['repository']['full_name'] if 'repository' in body else None
+        global_event = self.is_global_event(event_type, repo, body)
 
-        if self.get_repo(repo) is None:
+        if global_event:
+            pass
+
+        if self.get_repo(repo) is None and not global_event:
             # Not a repository we know so accept the payload, return 200 but
             # discard the message
             log.info('Message received for {0} but no such repository '
@@ -349,14 +367,22 @@ class GithubHook(BotPlugin):
             for room_name in self.get_routes(repo):
                 events = self.get_events(repo, room_name)
                 if event_type in events or '*' in events:
-                    room = self.query_room(room_name)
-                    try:
-                        room.join(username=self._bot.bot_config.CHATROOM_FN)
-                    except errbot.backends.base.RoomError as e:
-                        self.log.info(e)
-                    self.send(room, message, message_type='groupchat')
+                    self.join_and_send(room_name, message)
+            if global_event:
+                self.join_and_send(self.global_route, message)
         response.status = 204
         return None
+
+    def join_and_send(self, room_name, message):
+        room = self.query_room(room_name)
+        try:
+            room.join(username=self._bot.bot_config.CHATROOM_FN)
+        except errbot.backends.base.RoomError as e:
+            self.log.info(e)
+        self.send(room, message, message_type='groupchat')
+
+    def is_global_event(self, event_type, repo, body):
+        return event_type in ['repository', 'membership', 'member', 'team_add', 'fork']
 
     @staticmethod
     def validate_incoming(request):
@@ -395,6 +421,7 @@ class GithubHook(BotPlugin):
         user = body['issue']['user']['login']
         url = body['issue']['url']
         is_assigned = body['issue']['assignee']
+        body = body['issue']['body']
         if is_assigned is not None:
             assignee = body['issue']['assignee']['login']
 
@@ -407,6 +434,7 @@ class GithubHook(BotPlugin):
         user = body['pull_request']['user']['login']
         url = body['pull_request']['html_url']
         merged = body['pull_request']['merged']
+        body = body['pull_request']['body']
         if action == 'closed' and merged:
             user = body['pull_request']['merged_by']['login']
             action = 'merged'
@@ -432,6 +460,7 @@ class GithubHook(BotPlugin):
         commits = len(body['commits'])
         branch = body['ref'].split('/')[-1]
         url = body['compare']
+        messages = [c['message'] for c in body['commits'][:5]]
         return tenv().get_template('push.html').render(locals().copy())
 
     @staticmethod
@@ -449,6 +478,7 @@ class GithubHook(BotPlugin):
         url = body['issue']['html_url']
         if action == 'created':
             action = 'commented'
+        body = body['comment']['body']
         return tenv().get_template('issue_comment.html').render(locals().copy())
 
     @staticmethod
@@ -457,4 +487,37 @@ class GithubHook(BotPlugin):
         url = body['comment']['html_url']
         line = body['comment']['line']
         sha = body['comment']['commit_id']
+        body = body['comment']['body']
         return tenv().get_template('commit_comment.html').render(locals().copy())
+
+    @staticmethod
+    def msg_repository(body, repo):
+        action = body['action']
+        user = body['sender']['login']
+        url = body['repository']['html_url']
+        return tenv().get_template('repository.html').render(locals().copy())
+
+    @staticmethod
+    def msg_membership(body, repo):
+        action = '{} {}'.format(body['action'], 'to' if body['action'] == 'added' else 'from')
+        user = body['member']['login']
+        team = body['team']['name']
+        return tenv().get_template('membership.html').render(locals().copy())
+
+    @staticmethod
+    def msg_member(body, repo):
+        user = body['member']['login']
+        url = body['repository']['html_url']
+        return tenv().get_template('member.html').render(locals().copy())
+
+    @staticmethod
+    def msg_team_add(body, repo):
+        team = body['team']['name']
+        url = body['repository']['html_url']
+        return tenv().get_template('team_add.html').render(locals().copy())
+
+    @staticmethod
+    def msg_fork(body, repo):
+        fork_name = body['forkee']['full_name']
+        url = body['forkee']['html_url']
+        return tenv().get_template('fork.html').render(locals().copy())
