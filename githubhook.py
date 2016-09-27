@@ -301,11 +301,11 @@ class GithubHook(BotPlugin):
     def github_global(self, message, args):
         """Set a global route"""
         if len(args) == 1:
-            self.global_route = None
+            self['global_route ']= None
             yield 'Removed global route.'
         elif len(args) == 2:
             room = args[1]
-            self.global_route = room
+            self['global_route'] = room
             yield 'Set global route to {}.'.format(room)
         else:
             yield HELP_MSG
@@ -369,7 +369,7 @@ class GithubHook(BotPlugin):
                 if event_type in events or '*' in events:
                     self.join_and_send(room_name, message)
             if global_event:
-                self.join_and_send(self.global_route, message)
+                self.join_and_send(self['global_route'], message)
         response.status = 204
         return None
 
