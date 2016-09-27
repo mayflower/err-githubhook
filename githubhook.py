@@ -379,7 +379,7 @@ class GithubHook(BotPlugin):
             room.join(username=self._bot.bot_config.CHATROOM_FN)
         except errbot.backends.base.RoomError as e:
             self.log.info(e)
-        self.send(room, message, message_type='groupchat')
+        self.send(room, message)
 
     def is_global_event(self, event_type, repo, body):
         return event_type in ['repository', 'membership', 'member', 'team_add', 'fork']
