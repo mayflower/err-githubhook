@@ -1,5 +1,5 @@
 {%- if action in ['opened', 'closed', 'reopened'] -%}
-    [Github] [{{repo}}] issue {{url}} ({{title}}) {{action}} by {{user}}
+    \[{{repo_name}}] \[{{repo}}] issue {{url}} ({{title}}) {{action}} by {{user}}
     {%- if action == 'opened' %}
       {{body}}
     {%- endif -%}
@@ -9,11 +9,11 @@
     {%- else -%}
         {%- set act_value = 'removed from' -%}
     {%- endif -%}
-    [Github] [{{repo}}] label {{act_value}} issue {{url}} ({{title}}) by {{user}}.
+    \[{{repo_name}}] \[{{repo}}] label {{act_value}} issue {{url}} ({{title}}) by {{user}}.
 {%- elif action == 'assigned' -%}
-    [Github] [{{repo}}] issue {{url}} ({{title}}) {{action}} to {{assignee}} by {{user}}.
-{%- elif action == 'unassigned' -%}
-    [Github] [{{repo}}] issue {{url}} ({{title}}) {{action}} by {{user}}.
+    \[{{repo_name}}] \[{{repo}}] issue {{url}} ({{title}}) {{action}} to {{assignee}} by {{user}}.
+{%- elif action == 'unassigned' or action == 'updated' -%}
+    \[{{repo_name}}] \[{{repo}}] issue {{url}} ({{title}}) {{action}} by {{user}}.
 {%- else -%}
-    [Github] [{{repo}}] unknown action: {{action}} for event type: issue received.
+    \[{{repo_name}}] \[{{repo}}] unknown action: {{action}} for event type: issue received.
 {%- endif -%}

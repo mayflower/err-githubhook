@@ -1,8 +1,8 @@
 ##########
-GithubHook
+RepoHook
 ##########
 
-GithubHook is a webhook endpoint for Err_ as well as a set of commands to
+RepoHook is a webhook endpoint for Err_ as well as a set of commands to
 configure the routing of messages to chatrooms.
 
 This plugin does not depend on anything but Err_ itself and the Python
@@ -16,23 +16,25 @@ The supported Python versions are:
 Python versions prior to 2.7 aren't supported by Err_ and Python versions
 prior to Python 2.7.7 miss the ``hmac.compare_digest`` method to securely
 and in constant time compare two digests. This is needed to validate
-incoming requests as coming from Github.
+incoming requests as coming from Github or GitLab. Other web VCS providers
+can be easily added in the future, we encourage you to submit a PR if your
+favorite website supports webhooks.
 
 Webhooks
 --------
 
 Webhooks are a way for websites, or really any service, to notify another
-service that something happened. Github provides webhooks that based on
+service that something happened. Github/GitLab provide webhooks that based on
 an event send a payload over HTTP to another service which can then react
 accordingly.
 
 They enable near real-time notifications of actions, so if someone pushes
-code to a repository Github will send a HTTP payload with some information
-about that event.
+code to a repository Github/GitLab will send a HTTP payload with some
+information about that event.
 
 This mechanism can be used to receive almost instantaneous notifications of
-activity that happens on a repository on Github. It's a great way to hook up
-your repository to Err_.
+activity that happens on a repository on Github/GitLab. It's a great way
+to hook up your repository to Err_.
 
 Security
 --------
@@ -60,6 +62,8 @@ we simply accept it but disregard the message. This avoids us first doing
 expensive computation to validate a hash to only later come to the conclusion
 that we have no route for this message.
 
+Note: GitLab token validation is currently not supported.
+
 Installation
 ------------
 
@@ -72,14 +76,15 @@ the internet but instead put it behind a proxying nginx or Apache HTTPD
 and let those handle terminating SSL traffic for you and passing the
 request on to Err_'s webserver.
 
-The webhook on Github needs to be configured to send a payload to
-https://your-endoint.tld/github with a *Content type* of ``application/json``.
+The webhook on Github/GitLab needs to be configured to send a payload to
+https://your-endoint.tld/repohook with a *Content type* of
+``application/json``.
 
 In order to install this plugin all you need to do is:
 
 .. code-block:: text
 
-   !repos install https://github.com/daenney/err-githubhook.git
+   !repos install https://github.com/daenney/err-repohook.git
 
 Configuration
 -------------
@@ -93,7 +98,7 @@ To view the full configuration of the plugin you can issue the following:
 
 .. code-block:: text
 
-   !github config
+   !repohook config
 
 There is no way to manipulate the configuration through this command, only
 view it. Since its output contains sensitive data, like the tokens, it is
@@ -108,7 +113,7 @@ An example of nginx plus the webserver plugin:
 
    !load Webserver
    !config Webserver {'HOST': '127.0.0.1', 'PORT': 3141}
-   !reload GithubHook
+   !reload RepoHook
 
 The nginx configured to handle https://your-endpoint.tld and proxy all
 requests to Err_:
@@ -173,7 +178,7 @@ and the channel you want messages routed to:
 
 .. code-block:: text
 
-   !github route example/example example@example.com
+   !repohook route example/example example@example.com
 
 By default we will forward the following types of events to that channel:
 
@@ -188,7 +193,7 @@ You can also pass in which events should be routed at creation time:
 
 .. code-block:: text
 
-   !github route example/example example@example.com push issues comment
+   !repohook route example/example example@example.com push issues comment
 
 Changing these events later simply requires you to call this command again.
 Omitting the events when a route already exists resets the route to the
@@ -201,21 +206,21 @@ In order to list all the routes for a repository:
 
 .. code-block:: text
 
-   !github routes example/example
+   !repohook routes example/example
 
-You can pass multiple repositories to ``!github routes`` by separating them
+You can pass multiple repositories to ``!repohook routes`` by separating them
 with a space. In return you'll get the route configuration for every of those
 repositories.
 
 .. code-block:: text
 
-   !github routes example/example test/test
+   !repohook routes example/example test/test
 
 If you want to list all routes simply call the command with no arguments:
 
 .. code-block:: text
 
-   !github routes
+   !repohook routes
 
 default events
 ^^^^^^^^^^^^^^
@@ -224,7 +229,7 @@ The default events to subscribe on can be altered:
 
 .. code-block:: text
 
-   !github defaults push commit issues pull_request
+   !repohook defaults push commit issues pull_request
 
 Changing the default will only affect new routes, existing ones will have
 to be updated manually using the ``route`` command.
@@ -234,7 +239,7 @@ defaults:
 
 .. code-block:: text
 
-   !github defaults
+   !repohook defaults
 
 token
 ^^^^^
@@ -249,7 +254,7 @@ places it shouldn't.
 
 .. code-block:: text
 
-   !github token example/example TOKEN
+   !repohook token example/example TOKEN
 
 It is not possible to request the token once it is set. If you believe it
 was set incorrectly, simply set it again to what it should be.
@@ -264,7 +269,7 @@ In order to remove a route issue the following:
 
 .. code-block:: text
 
-   !github remove example/example example@example.com
+   !repohook remove example/example example@example.com
 
 If this is the last route we know about for that repository any further
 configuration entries for that repository will be removed too, like the
@@ -274,7 +279,7 @@ Should you wish to remove all routes, essentially removing the repository:
 
 .. code-block:: text
 
-   !github remove example/example
+   !repohook remove example/example
 
 This will also cause the bot to remove any further configuration entries it
 has stored for this repository, such as the token.
