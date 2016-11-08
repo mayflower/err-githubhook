@@ -79,7 +79,8 @@ class GithubHandlers(CommonGitWebProvider):
             user=body['issue']['user']['login'],
             url=body['issue']['url'],
             is_assigned=body['issue']['assignee'],
-            assignee=body['issue']['assignee']['login'] if body['issue']['assignee'] else None
+            assignee=body['issue']['assignee']['login'] if body['issue']['assignee'] else None,
+            text=body['issue']['body']
         )
 
     def msg_pull_request(self, body, repo):
@@ -97,26 +98,49 @@ class GithubHandlers(CommonGitWebProvider):
             number=body['pull_request']['number'],
             url=body['pull_request']['html_url'],
             merged=body['pull_request']['merged'],
+            text=body['pull_request']['body']
+        )
+
+    def msg_pull_request_review(self, body, repo):
+        return self.render_template(
+            template='pull_request_review', body=body, repo=repo,
+            user=body['review']['user']['login'],
+            pr=body['pull_request']['number'],
+            url=body['pull_request']['html_url'],
+            state='requested changes on' if body['review']['state'] == 'changes_requested' else body['review']['state'],
         )
 
     def msg_pull_request_review_comment(self, body, repo):
         return self.render_template(
             template='pull_request_review_comment', body=body, repo=repo,
-            action='commented' if body['action'] == 'created' else body['action'],
+            action=body['action'],
             user=body['comment']['user']['login'],
             line=body['comment']['position'],
             l_url=body['comment']['html_url'],
             pr=body['pull_request']['number'],
             url=body['pull_request']['html_url'],
+            text=body['comment']['body']
         )
 
     def msg_push(self, body, repo):
+        if body['created']:
+            action = 'created'
+        elif body['deleted']:
+            action = 'deleted'
+        elif body['forced']:
+            action = 'force-pushed'
+        else:
+            action = 'pushed'
         return self.render_template(
             template='push', body=body, repo=repo,
             user=body['pusher']['name'],
             commits=len(body['commits']),
             branch=body['ref'].split('/')[-1],
             url=body['compare'],
+            action=action,
+            commit_messages=[dict(hash=c['id'][:8], url=c['url'],
+                                  msg=c['message']
+                                ) for c in body['commits'][:5]]
         )
 
     def msg_status(*args):
@@ -127,11 +151,12 @@ class GithubHandlers(CommonGitWebProvider):
     def msg_issue_comment(self, body, repo):
         return self.render_template(
             template='issue_comment', body=body, repo=repo,
-            action='commented' if body['action'] == 'created' else body['action'],
+            action=body['action'],
             user=body['comment']['user']['login'],
             number=body['issue']['number'],
             title=body['issue']['title'],
             url=body['issue']['html_url'],
+            text=body['comment']['body']
         )
 
     def msg_commit_comment(self, body, repo):
@@ -141,6 +166,13 @@ class GithubHandlers(CommonGitWebProvider):
             url=body['comment']['html_url'],
             line=body['comment']['line'],
             sha=body['comment']['commit_id'],
+        )
+
+    def msg_repository(self, body, repo):
+        return self.render_template(
+            template='repository', body=body, repo=repo,
+            action=body['action'],
+            user=body['sender']['login']
         )
 
 

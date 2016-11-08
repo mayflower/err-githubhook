@@ -1,7 +1,7 @@
-{%- if action in ['opened', 'closed', 'reopened'] -%}
+{%- if action in ['opened', 'closed', 'reopened', 'edited'] -%}
     \[{{repo_name}}] \[{{repo}}] issue {{url}} ({{title}}) {{action}} by {{user}}
-    {%- if action == 'opened' %}
-      {{body}}
+    {%- if action in ['opened', 'edited'] %}
+      {{text}}
     {%- endif -%}
 {%- elif action in ['labeled', 'unlabeled'] %}
     {%- if action == 'labeled' -%}
@@ -9,7 +9,7 @@
     {%- else -%}
         {%- set act_value = 'removed from' -%}
     {%- endif -%}
-    \[{{repo_name}}] \[{{repo}}] label {{act_value}} issue {{url}} ({{title}}) by {{user}}.
+    \[{{repo_name}}] \[{{repo}}] label `{{body['label']['name']}}` {{act_value}} issue {{url}} ({{title}}) by {{user}}.
 {%- elif action == 'assigned' -%}
     \[{{repo_name}}] \[{{repo}}] issue {{url}} ({{title}}) {{action}} to {{assignee}} by {{user}}.
 {%- elif action == 'unassigned' or action == 'updated' -%}

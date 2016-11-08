@@ -2,11 +2,10 @@
 from __future__ import unicode_literals
 import json
 
-from errbot.templating import tenv
-import errbot.backends.base
 from bottle import abort, response
 from errbot import BotPlugin, botcmd, webhook
 from errbot.rendering import md_escape
+import errbot.backends.base
 
 import config
 
@@ -115,6 +114,14 @@ class RepoHook(BotPlugin):
                                           .get('routes', {}) \
                                           .keys()
 
+    def get_token(self, repo):
+        """Returns the token for a repository.
+
+        Be **very** careful as to where you call this as this returns the
+        plain text, uncensored token.
+        """
+        return self.config['repositories'].get(repo, {}).get('token')
+
     def set_defaults(self, defaults):
         """Set which events are relayed by default."""
         self.config['default_events'] = defaults
@@ -132,8 +139,13 @@ class RepoHook(BotPlugin):
         If the repository is unknown to us, add the repository first.
         """
         if self.get_repo(repo) is None:
-            self.config['repositories'][repo] = {'routes': {}, 'token': None}
+            self.config['repositories'][repo] = { 'routes': {}, 'token': None }
         self.config['repositories'][repo]['routes'][room] = {}
+        self.save_config()
+
+    def set_token(self, repo, token):
+        """Set the token for a repository."""
+        self.config['repositories'][repo]['token'] = token
         self.save_config()
 
     def save_config(self):
@@ -281,7 +293,7 @@ class RepoHook(BotPlugin):
         """Register the secret token for a repository.
 
         This token is needed to validate the incoming request as coming from
-        the repoisitory. It must be configured on your repository's webhook
+        the repository. It must be configured on your repository's webhook
         settings too.
         """
         if len(args) != 2:
@@ -324,7 +336,7 @@ class RepoHook(BotPlugin):
             yield HELP_MSG
 
     @botcmd(split_args_with=None)
-    def github_global(self, message, args):
+    def repohook_global(self, message, args):
         """Set a global route"""
         if len(args) == 1:
             self['global_route ']= None
@@ -413,7 +425,7 @@ class RepoHook(BotPlugin):
                 self.log.debug('Routes for room {0}: {1}'.format(room_name, events))
                 if event_type in events or '*' in events:
                     self.join_and_send(room_name, message)
-            if global_event:
+            if global_event and 'global_route' in self:
                 self.join_and_send(self['global_route'], message)
         response.status = 204
         return None
@@ -461,116 +473,3 @@ class RepoHook(BotPlugin):
             return False
 
         return True
-
-    @staticmethod
-    def msg_generic(body, repo, event_type):
-        return tenv().get_template('generic.html').render(locals().copy())
-
-    @staticmethod
-    def msg_issues(body, repo):
-        action = body['action']
-        number = body['issue']['number']
-        title = body['issue']['title']
-        user = body['issue']['user']['login']
-        url = body['issue']['url']
-        is_assigned = body['issue']['assignee']
-        body = body['issue']['body']
-        if is_assigned is not None:
-            assignee = body['issue']['assignee']['login']
-
-        return tenv().get_template('issues.html').render(locals().copy())
-
-    @staticmethod
-    def msg_pull_request(body, repo):
-        action = body['action']
-        number = body['pull_request']['number']
-        user = body['pull_request']['user']['login']
-        url = body['pull_request']['html_url']
-        merged = body['pull_request']['merged']
-        body = body['pull_request']['body']
-        if action == 'closed' and merged:
-            user = body['pull_request']['merged_by']['login']
-            action = 'merged'
-        if action == 'synchronize':
-            action = 'updated'
-        return tenv().get_template('pull_request.html').render(locals().copy())
-
-    @staticmethod
-    def msg_pull_request_review_comment(body, repo):
-        action = body['action']
-        user = body['comment']['user']['login']
-        line = body['comment']['position']
-        l_url = body['comment']['html_url']
-        pr = body['pull_request']['number']
-        url = body['pull_request']['html_url']
-        if action == 'created':
-            action = 'commented'
-        return tenv().get_template('pull_request_review_comment.html').render(locals().copy())
-
-    @staticmethod
-    def msg_push(body, repo):
-        user = body['pusher']['name']
-        commits = len(body['commits'])
-        branch = body['ref'].split('/')[-1]
-        url = body['compare']
-        messages = [c['message'] for c in body['commits'][:5]]
-        return tenv().get_template('push.html').render(locals().copy())
-
-    @staticmethod
-    def msg_status(*args):
-        """Status events are crazy and free form. There's no sane, consistent
-        or logical way to deal with them."""
-        return None
-
-    @staticmethod
-    def msg_issue_comment(body, repo):
-        action = body['action']
-        user = body['comment']['user']['login']
-        number = body['issue']['number']
-        title = body['issue']['title']
-        url = body['issue']['html_url']
-        if action == 'created':
-            action = 'commented'
-        body = body['comment']['body']
-        return tenv().get_template('issue_comment.html').render(locals().copy())
-
-    @staticmethod
-    def msg_commit_comment(body, repo):
-        user = body['comment']['user']['login']
-        url = body['comment']['html_url']
-        line = body['comment']['line']
-        sha = body['comment']['commit_id']
-        body = body['comment']['body']
-        return tenv().get_template('commit_comment.html').render(locals().copy())
-
-    @staticmethod
-    def msg_repository(body, repo):
-        action = body['action']
-        user = body['sender']['login']
-        url = body['repository']['html_url']
-        return tenv().get_template('repository.html').render(locals().copy())
-
-    @staticmethod
-    def msg_membership(body, repo):
-        action = '{} {}'.format(body['action'], 'to' if body['action'] == 'added' else 'from')
-        user = body['member']['login']
-        team = body['team']['name']
-        return tenv().get_template('membership.html').render(locals().copy())
-
-    @staticmethod
-    def msg_member(body, repo):
-        user = body['member']['login']
-        url = body['repository']['html_url']
-        return tenv().get_template('member.html').render(locals().copy())
-
-    @staticmethod
-    def msg_team_add(body, repo):
-        team = body['team']['name']
-        url = body['repository']['html_url']
-        return tenv().get_template('team_add.html').render(locals().copy())
-
-    @staticmethod
-    def msg_fork(body, repo):
-        fork_name = body['forkee']['full_name']
-        url = body['forkee']['html_url']
-        return tenv().get_template('fork.html').render(locals().copy())
