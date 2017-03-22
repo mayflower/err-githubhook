@@ -166,6 +166,7 @@ class GithubHandlers(CommonGitWebProvider):
             url=body['comment']['html_url'],
             line=body['comment']['line'],
             sha=body['comment']['commit_id'],
+            text=body['comment']['body']
         )
 
     def msg_repository(self, body, repo):
