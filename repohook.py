@@ -348,7 +348,7 @@ class RepoHook(BotPlugin):
         else:
             yield HELP_MSG
 
-    @webhook(r'/repohook', methods=('POST',), raw=True)
+    @webhook(r'/repohook', methods=('POST','GET'), raw=True)
     def receive(self, request):
         """Handle the incoming payload.
 

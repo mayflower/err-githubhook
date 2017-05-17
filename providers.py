@@ -97,7 +97,7 @@ class GithubHandlers(CommonGitWebProvider):
             action=action, user=user,
             number=body['pull_request']['number'],
             url=body['pull_request']['html_url'],
-            merged=body['pull_request']['merged'],
+            title=body['pull_request']['title'],
             text=body['pull_request']['body']
         )
 
@@ -115,10 +115,8 @@ class GithubHandlers(CommonGitWebProvider):
             template='pull_request_review_comment', body=body, repo=repo,
             action=body['action'],
             user=body['comment']['user']['login'],
-            line=body['comment']['position'],
-            l_url=body['comment']['html_url'],
+            url=body['comment']['html_url'],
             pr=body['pull_request']['number'],
-            url=body['pull_request']['html_url'],
             text=body['comment']['body']
         )
 
@@ -192,14 +190,18 @@ class GitLabHandlers(CommonGitWebProvider):
         return True
 
     def get_repo(self, body):
-        return body['project']['name']
+        if 'project' in body:
+            return body['project']['path_with_namespace']
+        else:
+            return body['project_name'].replace(' ', '')
 
     def map_event_type(self, event_type):
         return {
             'push_hook': 'push',
             'issue_hook': 'issue',
             'note_hook': 'comment',
-        }.get(event_type)
+            'merge_request_hook': 'pull_request',
+        }.get(event_type, event_type)
 
     def create_message(self, body, event_type, repo):
         mapped_event_type = self.map_event_type(event_type)
@@ -208,11 +210,17 @@ class GitLabHandlers(CommonGitWebProvider):
     def msg_push(self, body, repo):
         if body['commits']:
             last_commit_url = body['commits'][-1]['url']
+            action = "pushed"
             commit_messages = [
-                dict(msg=c['message'][:80].split('\n')[0], hash=c['id'][:8],
+                dict(msg=c['message'], hash=c['id'][:8],
                      url=c['url']) for c in body['commits']
             ]
         else:
+            print([body['before'][:8] == '00000000', body['before'][:8], '00000000'])
+            if body['before'][:8] == '00000000':
+                action = 'created'
+            if body['after'][:8] == '00000000':
+                action = 'deleted'
             last_commit_url = body['project']['web_url']
             commit_messages = []
 
@@ -223,6 +231,7 @@ class GitLabHandlers(CommonGitWebProvider):
             branch='/'.join(body['ref'].split('/')[2:]),
             url=last_commit_url,
             commit_messages=commit_messages,
+            action=action
         )
 
     def msg_issue(self, body, repo):
@@ -233,7 +242,8 @@ class GitLabHandlers(CommonGitWebProvider):
                 action=action,
                 title=body['object_attributes']['title'],
                 user=body['user']['name'],
-                url=body['object_attributes']['url']
+                url=body['object_attributes']['url'],
+                text=body['object_attributes']['description']
             )
 
     def msg_comment(self, body, repo):
@@ -243,8 +253,9 @@ class GitLabHandlers(CommonGitWebProvider):
                 template='issue_comment', body=body, repo=repo,
                 user=body['user']['name'],
                 url=body['object_attributes']['url'],
-                action='commented',
-                title=body['issue']['title']
+                action='created',
+                title=body['issue']['title'],
+                text=body['object_attributes']['note']
             )
         elif noteable == "commit":
             return self.render_template(
@@ -252,11 +263,50 @@ class GitLabHandlers(CommonGitWebProvider):
                 user=body['user']['name'],
                 url=body['object_attributes']['url'],
                 line=None,
+                text=body['object_attributes']['note']
             )
         elif noteable == "mergerequest":
             return self.render_template(
-                template='merge_request_comment', body=body, repo=repo,
+                template='pull_request_review_comment', body=body, repo=repo,
                 user=body['user']['name'],
                 url=body['object_attributes']['url'],
+                action='created',
+                text=body['object_attributes']['note'],
+                pr=body['merge_request']['iid'],
             )
+
+    def msg_pull_request(self, body, repo):
+        action = body['object_attributes']['action']
+        user = body['user']['name']
+        if action == 'open':
+            action = 'opened'
+        if action == 'merge':
+            action = 'merged'
+
+        return self.render_template(
+            template='pull_request', body=body, repo=repo,
+            action=action, user=user,
+            number=body['object_attributes']['iid'],
+            url=body['object_attributes']['url'],
+            text=body['object_attributes']['description'],
+            title=body['object_attributes']['title']
+        )
+
+    def msg_pipeline_hook(self, body, repo):
+        return self.render_template(
+            template='pipeline', body=body, repo=repo,
+            status=body['object_attributes']['status'],
+            user=body['user']['name'],
+            branch=body['object_attributes']['ref']
+        )
+
+    def msg_build_hook(self, body, repo):
+        return self.render_template(
+            template='build', body=body, repo=repo,
+            status=body['build_status'],
+            name=body['build_name'],
+            stage=body['build_stage'],
+            user=body['user']['name'],
+            branch=body['ref']
+        )
 

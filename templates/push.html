@@ -1,5 +1,5 @@
 {%- if action == 'deleted' -%}
-\[{{repo_name}}] \[{{repo}}] {{user}} deleted {{branch}}.
+\[{{repo_name}}] \[{{repo}}] {{user}} deleted branch {{branch}}.
 {%- else -%}
 {%- if commits == 1 -%}
   {%- set commit = 'commit' -%}
@@ -12,5 +12,5 @@
 \[{{repo_name}}] \[{{repo}}/{{branch}}] {{user}} {{action}} {{commits}} {{commit}} ({{url}}):
 {%- endif -%}
 {% for c in commit_messages %}
-  - [{{c.hash}}]({{c.url}}) {{c.msg}}{% endfor %}
+  - [{{c.hash}}] {{c.msg}} ({{c.url}}){% endfor %}
 {%- endif -%}
