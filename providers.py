@@ -292,11 +292,15 @@ class GitLabHandlers(CommonGitWebProvider):
         )
 
     def msg_pipeline_hook(self, body, repo):
+        before = body['object_attributes']['before_sha'][:8]
+        after = body['object_attributes']['sha'][:8]
+        url = body['project']['web_url'] + '/compare/' + before + '...' + after
         return self.render_template(
             template='pipeline', body=body, repo=repo,
             status=body['object_attributes']['status'],
             user=body['user']['name'],
-            branch=body['object_attributes']['ref']
+            branch=body['object_attributes']['ref'],
+            url=url
         )
 
     def msg_build_hook(self, body, repo):
