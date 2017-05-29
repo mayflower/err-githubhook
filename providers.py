@@ -304,6 +304,9 @@ class GitLabHandlers(CommonGitWebProvider):
         )
 
     def msg_build_hook(self, body, repo):
+        if body['build_status'] != 'failed':
+            return None
+
         return self.render_template(
             template='build', body=body, repo=repo,
             status=body['build_status'],
