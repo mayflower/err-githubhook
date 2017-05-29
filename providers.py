@@ -209,19 +209,18 @@ class GitLabHandlers(CommonGitWebProvider):
 
     def msg_push(self, body, repo):
         if body['commits']:
-            last_commit_url = body['commits'][-1]['url']
+            url = body['project']['web_url'] + '/compare/' + body['before'][:8] + '...' + body['after'][:8]
             action = "pushed"
             commit_messages = [
                 dict(msg=c['message'], hash=c['id'][:8],
                      url=c['url']) for c in body['commits']
             ]
         else:
-            print([body['before'][:8] == '00000000', body['before'][:8], '00000000'])
             if body['before'][:8] == '00000000':
                 action = 'created'
             if body['after'][:8] == '00000000':
                 action = 'deleted'
-            last_commit_url = body['project']['web_url']
+            url = body['project']['web_url']
             commit_messages = []
 
         return self.render_template(
@@ -229,7 +228,7 @@ class GitLabHandlers(CommonGitWebProvider):
             user=body['user_name'],
             commits=len(body['commits']),
             branch='/'.join(body['ref'].split('/')[2:]),
-            url=last_commit_url,
+            url=url,
             commit_messages=commit_messages,
             action=action
         )
